@@ -1,0 +1,11 @@
+*.so
+*.dylib
+
+*.json
+*.cmake
+
+CMakeFiles
+Makefile
+
+*.cmake
+CMakeCache.txt
