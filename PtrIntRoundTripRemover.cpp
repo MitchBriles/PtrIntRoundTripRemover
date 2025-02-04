@@ -18,15 +18,7 @@ using namespace llvm;
 
 // New PM pass
 struct PtrIntRoundTripRemover : public PassInfoMixin<PtrIntRoundTripRemover> {
-  // unsigned int countUsers(Instruction *I) {
-  //   unsigned int userCount = 0;
-  //   for (auto it = I->user_begin(), end = I->user_end(); it != end; ++it) {
-  //       userCount++;
-  //   }
-  //   return userCount;
-  // }
-
-  bool tryReplaceRoundTrip(Instruction* intToPtr, IRBuilder<>& builder) {
+bool tryReplaceRoundTrip(IntToPtrInst* intToPtr, IRBuilder<>& builder) {
     bool changed = false;
 
     Instruction* op_inst = dyn_cast<Instruction>(intToPtr->getOperand(0));
@@ -81,15 +73,9 @@ struct PtrIntRoundTripRemover : public PassInfoMixin<PtrIntRoundTripRemover> {
         continue;
       }
 
-      switch (op_inst->getOpcode()) {
-        case Instruction::Add:
-          changed |= tryReplaceRoundTrip(intToPtr, builder);
+      changed |= tryReplaceRoundTrip(intToPtr, builder);
 
-          verifyFunction(F, &errs());
-          break;
-        default:
-          continue;
-      }
+      verifyFunction(F, &errs());
 
       if (changed) break;
     }
