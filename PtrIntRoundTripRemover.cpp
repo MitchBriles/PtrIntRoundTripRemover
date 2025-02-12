@@ -18,72 +18,50 @@ using namespace llvm;
 
 // New PM pass
 struct PtrIntRoundTripRemover : public PassInfoMixin<PtrIntRoundTripRemover> {
-bool tryReplaceRoundTrip(IntToPtrInst* intToPtr, IRBuilder<>& builder) {
-    bool changed = false;
+  bool tryReplaceRoundTrip(IntToPtrInst* intToPtr) {
+    if (!intToPtr) return false;
 
     Instruction* op_inst = dyn_cast<Instruction>(intToPtr->getOperand(0));
-
-    if (op_inst->getNumUses() > 1) {
-      // cannot safely replace
-      errs() << "More than 1 uses from from add\n";
-      return changed;
+    if (!op_inst || op_inst->getOpcode() != Instruction::Add || op_inst->getNumUses() > 1) {
+        errs() << "More than 1 use of add result\n";
+        return false;
     }
 
     PtrToIntInst* ptrToInt = dyn_cast<PtrToIntInst>(op_inst->getOperand(0));
-
-    if (ptrToInt->getNumUses() > 1) {
-      // cannot safely replace
-      errs() << "More than 1 uses from from ptrToInt\n";
-      return changed;
+    if (!ptrToInt || ptrToInt->getNumUses() > 1) {
+        errs() << "More than 1 use of ptrToInt result\n";
+        return false;
     }
 
-    Value* ptr = ptrToInt->getOperand(0);
-    Instruction* gep = GetElementPtrInst::Create(builder.getInt8Ty(), 
-                                                 ptr, 
-                                                 ArrayRef<Value*>{op_inst->getOperand(1)}, 
-                                                 "res", 
-                                                 intToPtr->getNextNode());
+    IRBuilder<> B(intToPtr);
+
+    Value* gep = B.CreateGEP(B.getInt8Ty(), 
+                             ptrToInt->getOperand(0), 
+                             {op_inst->getOperand(1)}, 
+                             "");
 
     intToPtr->replaceAllUsesWith(gep);
     intToPtr->eraseFromParent();
     op_inst->eraseFromParent();
     ptrToInt->eraseFromParent();
 
-    changed = true;
-    
-    return changed;
+    return true;
   }
 
   PreservedAnalyses run(Function& F, FunctionAnalysisManager&) {
-    IRBuilder<> builder(F.getContext());
     bool changed = false;
-    
-    for (Instruction& Inst : instructions(F)) {
-      IntToPtrInst* intToPtr = dyn_cast<IntToPtrInst>(&Inst);
 
-      if (!intToPtr) {
-        continue;
-      }
-
-      errs() << "Found intToPtr\n";
-
-      Instruction* op_inst = dyn_cast<Instruction>(intToPtr->getOperand(0));
-
-      if (!op_inst) {
-        continue;
-      }
-
-      changed |= tryReplaceRoundTrip(intToPtr, builder);
-
-      verifyFunction(F, &errs());
-
-      if (changed) break;
+    for (auto it = instructions(F).begin(), end = instructions(F).end(); it != end;) {
+        Instruction& Inst = *it++;
+        if (auto* intToPtr = dyn_cast<IntToPtrInst>(&Inst)) {
+            changed |= tryReplaceRoundTrip(intToPtr);
+        }
     }
 
     F.print(outs(), nullptr);
-
     return changed ? PreservedAnalyses::none() : PreservedAnalyses::all();
   }
+
 
   static bool isRequired() { return true; }
 };
