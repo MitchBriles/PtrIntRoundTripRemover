@@ -18,16 +18,24 @@ using namespace llvm;
 
 // New PM pass
 struct PtrIntRoundTripRemover : public PassInfoMixin<PtrIntRoundTripRemover> {
-  bool tryReplaceRoundTrip(IntToPtrInst* intToPtr) {
+  static bool tryReplaceRoundTrip(IntToPtrInst* intToPtr) {
     if (!intToPtr) return false;
 
-    Instruction* op_inst = dyn_cast<Instruction>(intToPtr->getOperand(0));
+    auto* op_inst = dyn_cast<Instruction>(intToPtr->getOperand(0));
     if (!op_inst || op_inst->getOpcode() != Instruction::Add || op_inst->getNumUses() > 1) {
         errs() << "More than 1 use of add result\n";
         return false;
     }
 
-    PtrToIntInst* ptrToInt = dyn_cast<PtrToIntInst>(op_inst->getOperand(0));
+    // keep track of (ptr + int) vs (int + ptr)
+    bool ptrOnLeft = true;
+    auto* ptrToInt = dyn_cast<PtrToIntInst>(op_inst->getOperand(0));
+
+    if (!ptrToInt) {
+        ptrOnLeft = false;
+        ptrToInt = dyn_cast<PtrToIntInst>(op_inst->getOperand(1));
+    }
+
     if (!ptrToInt || ptrToInt->getNumUses() > 1) {
         errs() << "More than 1 use of ptrToInt result\n";
         return false;
@@ -37,7 +45,7 @@ struct PtrIntRoundTripRemover : public PassInfoMixin<PtrIntRoundTripRemover> {
 
     Value* gep = B.CreateGEP(B.getInt8Ty(), 
                              ptrToInt->getOperand(0), 
-                             {op_inst->getOperand(1)}, 
+                             {op_inst->getOperand(ptrOnLeft ? 1 : 0)},
                              "");
 
     intToPtr->replaceAllUsesWith(gep);
@@ -48,7 +56,7 @@ struct PtrIntRoundTripRemover : public PassInfoMixin<PtrIntRoundTripRemover> {
     return true;
   }
 
-  PreservedAnalyses run(Function& F, FunctionAnalysisManager&) {
+  static PreservedAnalyses run(Function& F, FunctionAnalysisManager&) {
     bool changed = false;
 
     for (auto it = instructions(F).begin(), end = instructions(F).end(); it != end;) {
