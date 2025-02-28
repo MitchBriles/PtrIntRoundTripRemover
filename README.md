@@ -1,6 +1,7 @@
 # Pointer-Integer Round Trip Remover
 
-is an out-of-tree LLVM pass.
+is an out-of-tree LLVM pass that collapses instanses of pointer-integer round-trips into a single GEP (get element pointer)
+instruction.
 
 ### Building & Running
 
